@@ -65,15 +65,22 @@ import UIKit
 
 /**
  Wraps a view that follows the navigation bar, providing the direction that the view should follow
+ 
+ - changeAlphaWhileCollapsing: update the follower's view alpha while the navigation bar collapses.
  */
 @objcMembers
 open class NavigationBarFollower: NSObject {
   public weak var view: UIView?
   public var direction = NavigationBarFollowerCollapseDirection.scrollUp
+  public var changeAlphaWhileCollapsing = false
+  public var isSticky: Bool = false
   
-  public init(view: UIView, direction: NavigationBarFollowerCollapseDirection = .scrollUp) {
+  public init(view: UIView, isSticky: Bool = false, direction: NavigationBarFollowerCollapseDirection = .scrollUp,
+              changeAlphaWhileCollapsing: Bool = false) {
     self.view = view
+    self.isSticky = isSticky
     self.direction = direction
+    self.changeAlphaWhileCollapsing = changeAlphaWhileCollapsing
   }
 }
 
@@ -528,7 +535,7 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
   }
   
   private func updateFollowers() {
-    followers.forEach { follower in
+    followers.enumerated().forEach { index, follower in
       defer {
         follower.view?.layoutIfNeeded()
       }
@@ -543,7 +550,21 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
         case .scrollDown:
           follower.view?.transform = CGAffineTransform(translationX: 0, y: percentage * (height + safeArea))
         case .scrollUp:
-          follower.view?.transform = CGAffineTransform(translationX: 0, y: -(statusBarHeight - navigationBar.frame.origin.y))
+          let y = -(statusBarHeight - navigationBar.frame.origin.y)
+          if follower.isSticky {
+            switch index {
+            case 0:
+              follower.view?.transform = CGAffineTransform(translationX: 0, y: max(y, 0))
+            default:
+              let previousFollowers = self.followers[0..<index]
+              // Do not go less than the first non sticky follower Height
+              let previousStickyFollowersHeight = previousFollowers.filter{ !$0.isSticky }.compactMap { $0.view?.frame.height }.reduce(0, +)
+              let stickyY = max(y, -previousStickyFollowersHeight)
+              follower.view?.transform = CGAffineTransform(translationX: 0, y: stickyY)
+            }
+          } else {
+            follower.view?.transform = CGAffineTransform(translationX: 0, y: y)
+          }
         }
         
         return
@@ -676,6 +697,9 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
     navigationBar.subviews
       .filter(shouldHideView)
       .forEach { setAlphaOfSubviews(view: $0, alpha: alpha) }
+    
+    //Update followers alpha
+    followers.filter { $0.changeAlphaWhileCollapsing }.forEach { $0.view?.alpha = alpha }
     
     // Hide the left items
     navigationItem.leftBarButtonItem?.customView?.alpha = alpha
