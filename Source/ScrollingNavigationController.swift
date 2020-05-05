@@ -75,7 +75,7 @@ open class NavigationBarFollower: NSObject {
   public var changeAlphaWhileCollapsing = false
   public var isSticky: Bool = false
   
-  public init(view: UIView, isSticky: Bool = false, direction: NavigationBarFollowerCollapseDirection = .scrollUp,
+  public init(view: UIView,  isSticky: Bool = false, direction: NavigationBarFollowerCollapseDirection = .scrollUp,
               changeAlphaWhileCollapsing: Bool = false) {
     self.view = view
     self.isSticky = isSticky
@@ -181,6 +181,7 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
   open fileprivate(set) var gestureRecognizer: UIPanGestureRecognizer?
   fileprivate var sourceTabBar: TabBarMock?
   fileprivate var previousOrientation: UIDeviceOrientation = UIDevice.current.orientation
+  fileprivate var savedNavBarTintColor: UIColor?
   var delayDistance: CGFloat = 0
   var maxDelay: CGFloat = 0
   var scrollableView: UIView?
@@ -210,6 +211,7 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
    - parameter followers: An array of `NavigationBarFollower`s that will follow the navbar. The wrapper holds the direction that the view will follow
    */
   open func followScrollView(_ scrollableView: UIView, delay: Double = 0, scrollSpeedFactor: Double = 1, collapseDirection: NavigationBarCollapseDirection = .scrollDown, additionalOffset: CGFloat = 0, followers: [NavigationBarFollower] = []) {
+    savedNavBarTintColor = navigationBar.tintColor
     guard self.scrollableView == nil else {
       // Restore previous state. UIKit restores the navbar to its full height on view changes (e.g. during a modal presentation), so we need to restore the status once UIKit is done
       switch previousState {
@@ -289,11 +291,13 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
    - parameter animated: If true the scrolling is animated. Defaults to `true`
    - parameter duration: Optional animation duration. Defaults to 0.1
    - parameter scrollToTop: Optional boolean to scroll also the scroll view to the top. Defaults to false
+   - parameter completion: Optional completion block called when the navbar is shown
    */
-  open func showNavbar(animated: Bool = true, duration: TimeInterval = 0.1, scrollToTop: Bool = false) {
+  open func showNavbar(animated: Bool = true, duration: TimeInterval = 0.1, scrollToTop: Bool = false, completion showNavCompletion: (() -> Void)? = nil) {
     guard let _ = self.scrollableView, let visibleViewController = self.visibleViewController else { return }
     
     guard state == .collapsed else {
+      self.updateNavbarAlpha()
       return
     }
         
@@ -308,6 +312,7 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
           self.scrollView()?.setContentOffset(CGPoint(x: 0, y: -followersFinalHeight), animated: true)
         }
       }
+      showNavCompletion?()
     }
     
     let animations = {
@@ -351,6 +356,13 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
     let center = NotificationCenter.default
     center.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
     center.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+  }
+  
+  /**
+  The app needs to call navBarTintUpdated() after setting a new value for navigationBar.tintColor (or the new tintColor value will not take effect)
+  */
+  open func navBarTintUpdated() {
+    savedNavBarTintColor = navigationBar.tintColor
   }
   
   // MARK: - Gesture recognizer
@@ -653,7 +665,7 @@ open class ScrollingNavigationController: UINavigationController, UIGestureRecog
     
     // Hide all the possible titles
     navigationItem.titleView?.alpha = alpha
-    navigationBar.tintColor = navigationBar.tintColor.withAlphaComponent(alpha)
+    navigationBar.tintColor = savedNavBarTintColor?.withAlphaComponent(alpha)
     navigationItem.leftBarButtonItem?.tintColor = navigationItem.leftBarButtonItem?.tintColor?.withAlphaComponent(alpha)
     navigationItem.rightBarButtonItem?.tintColor = navigationItem.rightBarButtonItem?.tintColor?.withAlphaComponent(alpha)
     navigationItem.leftBarButtonItems?.forEach { $0.tintColor = $0.tintColor?.withAlphaComponent(alpha) }
